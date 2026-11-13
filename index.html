@@ -1,1 +1,346 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My Flash Cards</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #203029;
+      background: #f3f6f2;
+    }
 
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 32px 16px;
+    }
+
+    main {
+      width: min(720px, 100%);
+      margin: 0 auto;
+    }
+
+    h1 { margin: 0 0 8px; }
+    p { line-height: 1.5; }
+
+    .muted { color: #5b6a61; }
+
+    .panel {
+      background: white;
+      border: 1px solid #dce5dc;
+      border-radius: 18px;
+      padding: 24px;
+      margin: 18px 0;
+      box-shadow: 0 8px 24px #1835220c;
+    }
+
+    .card {
+      min-height: 230px;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      padding: 28px;
+      border-radius: 16px;
+      background: #e8f2e9;
+      border: 2px solid #c9dfcc;
+      overflow-wrap: anywhere;
+    }
+
+    .card-label {
+      color: #54715b;
+      text-transform: uppercase;
+      letter-spacing: .12em;
+      font-size: .8rem;
+      font-weight: 700;
+    }
+
+    .card-text {
+      font-size: clamp(1.35rem, 4vw, 2rem);
+      font-weight: 650;
+      margin-top: 14px;
+      white-space: pre-wrap;
+    }
+
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-top: 16px;
+    }
+
+    button, .file-button {
+      font: inherit;
+      border: 0;
+      border-radius: 10px;
+      padding: 11px 15px;
+      background: #245b38;
+      color: white;
+      cursor: pointer;
+      font-weight: 650;
+    }
+
+    button:hover, .file-button:hover { background: #17472a; }
+    button.secondary { background: #e9eee9; color: #203029; }
+    button.secondary:hover { background: #dce5dc; }
+    button.danger { background: #9a3d34; }
+    button.danger:hover { background: #7e2e27; }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+
+    .counter { margin-left: auto; }
+
+    label {
+      display: block;
+      font-weight: 650;
+      margin: 14px 0 6px;
+    }
+
+    input, textarea {
+      width: 100%;
+      font: inherit;
+      padding: 11px 12px;
+      border: 1px solid #b9c8bb;
+      border-radius: 10px;
+      background: white;
+    }
+
+    textarea { min-height: 90px; resize: vertical; }
+
+    .status {
+      min-height: 1.5em;
+      color: #245b38;
+      margin-bottom: 0;
+    }
+
+    .file-input { display: none; }
+
+    @media (max-width: 480px) {
+      body { padding: 20px 12px; }
+      .panel { padding: 18px; }
+      .counter { width: 100%; margin-left: 0; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>My Flash Cards</h1>
+    <p class="muted">Add your cards, then flip through them to study.</p>
+
+    <section class="panel" aria-label="Flash card study area">
+      <div class="card" aria-live="polite">
+        <div>
+          <div class="card-label" id="sideLabel">Question</div>
+          <div class="card-text" id="cardText"></div>
+        </div>
+      </div>
+
+      <div class="row">
+        <button class="secondary" id="previousBtn">← Previous</button>
+        <button id="flipBtn">Show answer</button>
+        <button class="secondary" id="nextBtn">Next →</button>
+        <span class="counter" id="counter"></span>
+      </div>
+
+      <div class="row">
+        <button class="secondary" id="shuffleBtn">Shuffle</button>
+        <button class="danger" id="deleteBtn">Delete this card</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Add a card</h2>
+      <form id="cardForm">
+        <label for="frontInput">Question or front</label>
+        <textarea id="frontInput" required maxlength="1000"></textarea>
+
+        <label for="backInput">Answer or back</label>
+        <textarea id="backInput" required maxlength="2000"></textarea>
+
+        <div class="row">
+          <button type="submit">Add card</button>
+          <span class="muted" id="deckCount"></span>
+        </div>
+      </form>
+      <p class="status" id="status" role="status"></p>
+    </section>
+
+    <section class="panel">
+      <h2>Back up your cards</h2>
+      <p class="muted">Cards are saved in this browser on this device. Export a backup if you want to keep a copy or move your deck.</p>
+      <div class="row">
+        <button class="secondary" id="exportBtn">Export backup</button>
+        <label class="file-button" for="importFile">Import backup</label>
+        <input class="file-input" id="importFile" type="file" accept="application/json,.json">
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const starterCards = [
+      { front: "What is opportunity cost?", back: "The value of the next-best option you give up when making a choice." },
+      { front: "What is inflation?", back: "A sustained increase in the general price level of goods and services." },
+      { front: "What does supply and demand help determine?", back: "The market price and quantity of a good or service." }
+    ];
+
+    const storageKey = "my-flash-card-deck-v1";
+
+    function loadCards() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(storageKey));
+        if (Array.isArray(saved)) {
+          return saved.filter(card =>
+            card &&
+            typeof card.front === "string" &&
+            typeof card.back === "string"
+          );
+        }
+      } catch (error) {
+        console.warn("Could not load saved cards.", error);
+      }
+      return starterCards.slice();
+    }
+
+    let cards = loadCards();
+    let currentIndex = 0;
+    let showingAnswer = false;
+
+    const cardText = document.getElementById("cardText");
+    const sideLabel = document.getElementById("sideLabel");
+    const counter = document.getElementById("counter");
+    const deckCount = document.getElementById("deckCount");
+    const statusMessage = document.getElementById("status");
+
+    function saveCards() {
+      localStorage.setItem(storageKey, JSON.stringify(cards));
+    }
+
+    function render() {
+      const hasCards = cards.length > 0;
+      const card = cards[currentIndex];
+
+      cardText.textContent = hasCards
+        ? (showingAnswer ? card.back : card.front)
+        : "No cards yet. Add one below.";
+
+      sideLabel.textContent = showingAnswer ? "Answer" : "Question";
+      counter.textContent = hasCards
+        ? `Card ${currentIndex + 1} of ${cards.length}`
+        : "0 cards";
+
+      deckCount.textContent = `${cards.length} card${cards.length === 1 ? "" : "s"} in your deck`;
+
+      document.getElementById("previousBtn").disabled = !hasCards;
+      document.getElementById("nextBtn").disabled = !hasCards;
+      document.getElementById("flipBtn").disabled = !hasCards;
+      document.getElementById("deleteBtn").disabled = !hasCards;
+      document.getElementById("flipBtn").textContent =
+        showingAnswer ? "Show question" : "Show answer";
+    }
+
+    document.getElementById("flipBtn").addEventListener("click", () => {
+      if (!cards.length) return;
+      showingAnswer = !showingAnswer;
+      render();
+    });
+
+    document.getElementById("nextBtn").addEventListener("click", () => {
+      if (!cards.length) return;
+      currentIndex = (currentIndex + 1) % cards.length;
+      showingAnswer = false;
+      render();
+    });
+
+    document.getElementById("previousBtn").addEventListener("click", () => {
+      if (!cards.length) return;
+      currentIndex = (currentIndex - 1 + cards.length) % cards.length;
+      showingAnswer = false;
+      render();
+    });
+
+    document.getElementById("shuffleBtn").addEventListener("click", () => {
+      for (let i = cards.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [cards[i], cards[j]] = [cards[j], cards[i]];
+      }
+      currentIndex = 0;
+      showingAnswer = false;
+      saveCards();
+      render();
+    });
+
+    document.getElementById("deleteBtn").addEventListener("click", () => {
+      if (!cards.length) return;
+      cards.splice(currentIndex, 1);
+      if (currentIndex >= cards.length) currentIndex = Math.max(0, cards.length - 1);
+      showingAnswer = false;
+      saveCards();
+      render();
+      statusMessage.textContent = "Card deleted.";
+    });
+
+    document.getElementById("cardForm").addEventListener("submit", event => {
+      event.preventDefault();
+      const front = document.getElementById("frontInput").value.trim();
+      const back = document.getElementById("backInput").value.trim();
+      if (!front || !back) return;
+
+      cards.push({ front, back });
+      currentIndex = cards.length - 1;
+      showingAnswer = false;
+      saveCards();
+      render();
+      event.target.reset();
+      statusMessage.textContent = "Card added and saved in this browser.";
+      document.getElementById("frontInput").focus();
+    });
+
+    document.getElementById("exportBtn").addEventListener("click", () => {
+      const file = new Blob([JSON.stringify(cards, null, 2)], {
+        type: "application/json"
+      });
+      const url = URL.createObjectURL(file);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "flash-cards-backup.json";
+      link.click();
+      URL.revokeObjectURL(url);
+      statusMessage.textContent = "Backup downloaded.";
+    });
+
+    document.getElementById("importFile").addEventListener("change", async event => {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      try {
+        const imported = JSON.parse(await file.text());
+        if (!Array.isArray(imported) ||
+            !imported.every(card =>
+              card &&
+              typeof card.front === "string" &&
+              typeof card.back === "string"
+            )) {
+          throw new Error("That file does not look like a flash-card backup.");
+        }
+
+        cards = imported;
+        currentIndex = 0;
+        showingAnswer = false;
+        saveCards();
+        render();
+        statusMessage.textContent = `Imported ${cards.length} card${cards.length === 1 ? "" : "s"}.`;
+      } catch (error) {
+        statusMessage.textContent = "Could not import that file. Choose a backup exported from this app.";
+      }
+
+      event.target.value = "";
+    });
+
+    render();
+  </script>
+</body>
+</html>
